@@ -110,29 +110,47 @@ def export():
     carteira_exportar = request.form['carteira_exportar']  
     conn = sqlite3.connect('database.db')
 
-
+    # Lê a tabela do banco de dados
     df = pd.read_sql_query("SELECT * FROM portfolio WHERE nome_carteira=?", conn, params=(carteira_exportar,))
     conn.close()
 
+    # Verifica se o dataframe está vazio
     if df.empty:
         return "Nenhum dado encontrado para a carteira especificada.", 404  
 
-
+    # Cria uma tabela pivot com os preços de fechamento dos ativos
     df_pivot = df.pivot_table(index='data', columns='ativo', values='preco_fechamento').reset_index()
 
-
+    # Calcula as variações percentuais
     df_variations = df_pivot.set_index('data').pct_change() * 100
     df_variations.reset_index(inplace=True)
 
+    # Exclui a coluna 'data' ao calcular retorno esperado e desvio padrão
+    df_variations_numeric = df_variations.drop(columns=['data'])
 
-    output = f'{carteira_exportar}_report.xlsx'  
+    # Cálculos de retorno esperado, desvio padrão e índice de desempenho para cada ativo
+    retorno_esperado = df_variations_numeric.mean()
+    desvio_padrao = df_variations_numeric.std()
+    indice_desempenho = retorno_esperado / desvio_padrao
+
+    # Criar um DataFrame para os indicadores de desempenho
+    indicadores_df = pd.DataFrame({
+        'E(R)': retorno_esperado,
+        'DP': desvio_padrao,
+        'Índ. de Desemp.': indice_desempenho
+    }).transpose()
+
+    output = f'{carteira_exportar}_report.xlsx'
+    
     with pd.ExcelWriter(output) as writer:
-
         df_pivot.to_excel(writer, index=False, sheet_name='Precos_Fechamento')
-        
         df_variations.to_excel(writer, index=False, sheet_name='Variacoes_Percentuais')
+        # Adicionar a nova aba com os dados de desempenho
+        indicadores_df.to_excel(writer, sheet_name='Desempenho_Ativos')
 
     return send_file(output, as_attachment=True)
+
+
 
 @app.route('/carteiras', methods=['GET'])
 def listar_carteiras():
