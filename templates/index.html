@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/styles.css">
+    <title>Relatório de Cotações</title>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="sidebar">
+            <h2>DASHBOARD ATIVOS</h2>
+            <nav>
+                <ul>
+                    <li><a href="{{ url_for('index') }}">Dashboard</a></li>
+                    <li><a href="{{ url_for('listar_carteiras') }}">Carteiras</a></li>
+                </ul>
+            </nav>
+        </div>
+        <div class="main-content">
+            <div class="top-bar">
+                <form method="POST" class="form-cotacao">
+                    <div class="input-group">
+                        <label for="ativo">Ativo:</label> 
+                        <input type="text" id="ativo" name="ativo" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="carteira">Carteira:</label> 
+                        <input type="text" id="carteira" name="carteira" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="periodo">Período:</label>
+                        <select id="periodo" name="periodo">
+                            <option value="1d">1 Dia</option>
+                            <option value="2d">2 Dias</option>
+                            <option value="5d">5 Dias</option>
+                            <option value="1mo">1 Mês</option>
+                            <option value="3mo">3 Mêses</option>
+                            <option value="6mo">6 Mêses</option>
+                            <option value="ytd">YTD</option>
+                            <option value="1y">1 Ano</option>
+                            <option value="5y">5 Anos</option>
+                            <option value="max">Total</option>
+
+                        </select>
+                    </div>
+                    <button type="submit" class="btn">Buscar</button>
+                </form>
+            </div>
+            <div class="top-bar4">
+                <div class="results-container">
+                    {% if retorno_esperado is not none %}
+                    <div class="result-card">
+                        <h3>Retorno Esperado:</h3>
+                        <p>{{ retorno_esperado|round(2) }}%</p>
+                    </div>
+                    {% else %}
+                    <div class="result-card">
+                        <h3>Retorno Esperado:</h3>
+                        <p>Nenhum Dado Encontrado</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if desvio_padrao is not none %}
+                    <div class="result-card">
+                        <h3>Desvio Padrão:</h3>
+                        <p>{{ desvio_padrao|round(2) }}%</p>
+                    </div>
+                    {% else %}
+                    <div class="result-card">
+                        <h3>Desvio Padrão:</h3>
+                        <p>Nenhum Dado Encontrado</p>
+                    </div>
+                    {% endif %}
+                    
+                    {% if indice_desempenho is not none %}
+                    <div class="result-card">
+                        <h3>Desempenho:</h3>
+                        <p>{{ indice_desempenho|round(2) }}</p>
+                    </div>
+                    {% else %}
+                    <div class="result-card">
+                        <h3>Desempenho:</h3>
+                        <p>Nenhum Dado Encontrado</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Container único para os gráficos -->
+            <div class="graphs-container">
+                <div class="graph">
+                    <h2>Gráficos</h2> <!-- Título único para os gráficos -->
+                    <div class="graph-display">
+                        <h3>Gráfico de Preços de Fechamento</h3>
+                        <div>{{ graph_closing|safe }}</div>
+                    </div>
+                    <div class="graph-display">
+                        <h3>Gráfico de Variação Percentual</h3>
+                        <div>{{ graph_variation|safe }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

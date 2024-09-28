@@ -1,0 +1,66 @@
+/* Adicionando bordas e espaçamento para a tabela */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+table th, table td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+table th {
+    background-color: #f4f7fc;
+    color: #333;
+}
+
+table td {
+    background-color: #fff;
+}
+
+.btn-blue {
+    background-color: #4c83ff;
+    color: white;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 5px;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.btn-red {
+    background-color: #ff4c4c;
+    color: white;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.btn-blue:hover {
+    background-color: #3c73e9;
+}
+
+.btn-red:hover {
+    background-color: #e93c3c;
+}
+
+/* Definir a classe "active" para indicar qual página está ativa */
+.active {
+    background-color: #454857;
+    color: #fff;
+}
+
+.top-bar4 {
+    display: flex;
+    justify-content: space-between;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin-top: 40px;
+}
+/* Outros estilos da sidebar e layout geral permanecem inalterados */

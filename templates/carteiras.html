@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/carteira.css">
+    <link rel="stylesheet" href="static/styles.css">
+    <title>Carteiras</title>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h2>DASHBOARD ATIVOS</h2>
+            <nav>
+                <ul>
+                    <li><a href="{{ url_for('index') }}">Dashboard</a></li>
+                    <li><a href="{{ url_for('listar_carteiras') }}" class="active">Carteiras</a></li>
+                </ul>
+            </nav>
+        </div>
+
+        <!-- Conteúdo principal -->
+        <div class="main-content">
+            <div class="top-bar">
+                <h2>Carteiras</h2>
+            </div>
+
+            <!-- Tabela de Carteiras -->
+            <div class="top-bar4">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome da Carteira</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for carteira in carteiras %}
+                        <tr>
+                            <td>{{ loop.index }}</td> <!-- Gera o índice automaticamente -->
+                            <td>{{ carteira }}</td>
+                            <td>
+                                
+                                <div class="top-bar3">
+                                    <form method="POST" action="/export">
+                                        <input type="hidden" name="carteira_exportar" value="{{ carteira }}">
+                                        <button type="submit" class="btn-blue">Exportar Carteira</button>
+                                    </form>
+                                    
+                                    <!-- Botão para excluir -->
+                                    <form method="POST" action="/carteiras/excluir/{{ carteira }}" style="display:inline;">
+                                        <button type="submit" class="btn-red">Excluir</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
