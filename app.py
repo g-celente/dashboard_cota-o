@@ -46,10 +46,11 @@ def index():
         ativo = request.form['ativo']
         periodo = request.form['periodo']
         carteira = request.form['carteira'] 
+        intervalo = request.form['interval']
 
         # Definindo a URL da API BrAPI
         token = "rp7gP3CGdGZrFHJukCEQcx"
-        url = f"https://brapi.dev/api/quote/{ativo}?range={periodo}&interval=1d"
+        url = f"https://brapi.dev/api/quote/{ativo}?range={periodo}&interval={intervalo}"
 
         # Fazendo a requisição à nova API
         response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
