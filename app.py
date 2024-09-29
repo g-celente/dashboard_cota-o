@@ -55,7 +55,6 @@ def index():
         # Fazendo a requisição à nova API
         response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
         data = response.json()
-        print(data)
 
         if 'results' not in data or not data['results']:
             error = "Ativo não encontrado ou erro na API."
