@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 
 # Define o token
-token = "rp7gP3CGdGZrFHJukCEQcx"
+token = "2ZB7EGv55yUzUgDkPAGyDb"
 
 # Define o cabeçalho com o Bearer Token
 headers = {
@@ -10,22 +10,34 @@ headers = {
 }
 
 # URL da API
-url_petr4 = "https://brapi.dev/api/quote/PETR4?range=5d&interval=1d"
+url_petr4 = "https://brapi.dev/api/quote/PETR4?range=5y&interval=1mo&dividends=true"
 
-# Fazendo a requisição com o cabeçalho
-response_petr4 = requests.get(url_petr4, headers=headers)
-data_petr4 = response_petr4.json()
+response = requests.get(url_petr4)
 
-# Verifica se há resultados
-if 'results' in data_petr4 and data_petr4['results']:
-    pet_data = data_petr4['results'][0]
+#response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+data = response.json()
+
+if 'results' not in data or not data['results']:
+    error = "Ativo não encontrado ou erro na API."
+
+# Transformando os dados recebidos em um DataFrame
+
+# Verificando os dados de dividendos
+dividends_data = data['dividendsData'][0].get('cashDividends', [])
+print(dividends_data)  # Para depuração
+
+if dividends_data:  # Apenas crie o DataFrame se houver dados de dividendos
+    df_dividends = pd.DataFrame(dividends_data)
     
-    # Obtendo o preço atual e a data do último fechamento
-    preco_atual = pet_data['regularMarketPrice']
-    data_fechamento = pet_data['regularMarketTime']
+    # Convertendo a coluna de data
+    df_dividends['date'] = pd.to_datetime(df_dividends['date'], unit='s')
+    df_dividends.set_index('date', inplace=True)
     
-    # Exibindo os dados desejados
-    print("Preço Atual: R$", preco_atual)
-    print("Data do Último Fechamento:", data_fechamento)
+    # Exibir o DataFrame de dividendos (para depuração)
+    print(df_dividends)
+
+    # Aqui você pode criar o gráfico para os dividendos
+    fig_dividends = px.bar(df_dividends, x=df_dividends.index, y='value', title=f'Dividends de {ativo}')
+    graph_dividends_html = fig_dividends.to_html(full_html=False)
 else:
-    print("Nenhum dado disponível.")
+    graph_dividends_html = None  # Caso não haja dados de dividendo

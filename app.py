@@ -29,6 +29,7 @@ def init_db():
 def index():
     graph_closing_html = None
     graph_variation_html = None
+    graph_dividends_html = None  # Novo gráfico para dividendos
     error = None
     df_html = None
     ativo = None  
@@ -49,8 +50,8 @@ def index():
         intervalo = request.form['interval']
 
         # Definindo a URL da API BrAPI
-        token = "rp7gP3CGdGZrFHJukCEQcx"
-        url = f"https://brapi.dev/api/quote/{ativo}?range={periodo}&interval={intervalo}"
+        token = "2ZB7EGv55yUzUgDkPAGyDb"
+        url = f"https://brapi.dev/api/quote/{ativo}?range={periodo}&interval={intervalo}&dividends=true"
 
         # Fazendo a requisição à nova API
         response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
@@ -61,38 +62,36 @@ def index():
             return render_template('index.html', error=error, ativo=ativo, carteiras=carteiras, retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
 
         # Transformando os dados recebidos em um DataFrame
-        df = pd.DataFrame(data['results'][0]['historicalDataPrice'])
+        df_price = pd.DataFrame(data['results'][0]['historicalDataPrice'])
 
-        # Convertendo a coluna de data e configurando o índice
-        df['date'] = pd.to_datetime(df['date'], unit='s')
-        df.set_index('date', inplace=True)
+        # Processando os dados de preços
+        df_price['date'] = pd.to_datetime(df_price['date'], unit='s')
+        df_price.set_index('date', inplace=True)
+        df_price.rename(columns={'close': 'fechamento'}, inplace=True)
 
-        # Renomeando colunas
-        df.rename(columns={'close': 'fechamento'}, inplace=True)
-
-        if df.empty:
+        if df_price.empty:
             error = "Nenhum dado encontrado para as datas especificadas."
             return render_template('index.html', error=error, ativo=ativo, carteiras=carteiras, retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
 
-        df['variacao'] = df['fechamento'].pct_change() * 100
+        df_price['variacao'] = df_price['fechamento'].pct_change() * 100
 
-        # Calcular os dados necessários
-        retorno_esperado = df['variacao'].mean()
-        desvio_padrao = df['variacao'].std()
+        retorno_esperado = df_price['variacao'].mean()
+        desvio_padrao = df_price['variacao'].std()
         indice_desempenho = retorno_esperado / desvio_padrao if desvio_padrao != 0 else None
 
-        store_in_db(ativo, df, carteira) 
+        store_in_db(ativo, df_price, carteira)
 
-        fig_closing = px.line(df, x=df.index, y='fechamento', title=f'Preços de Fechamento de {ativo}')
+        fig_closing = px.line(df_price, x=df_price.index, y='fechamento', title=f'Preços de Fechamento de {ativo}')
         graph_closing_html = fig_closing.to_html(full_html=False)
 
-        fig_variation = px.line(df, x=df.index, y='variacao', title=f'Variação Percentual de {ativo}')
+        fig_variation = px.line(df_price, x=df_price.index, y='variacao', title=f'Variação Percentual de {ativo}')
         graph_variation_html = fig_variation.to_html(full_html=False)
 
-        df_html = df[['fechamento', 'variacao']].to_html()
+        df_html = df_price[['fechamento', 'variacao']].to_html()
 
     return render_template('index.html', graph_closing=graph_closing_html, graph_variation=graph_variation_html, ativo=ativo, df=df_html, error=error, carteiras=carteiras,
                            retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
+
 
 def store_in_db(ativo, df, carteira):
     conn = sqlite3.connect('database.db')
@@ -131,12 +130,15 @@ def export():
     retorno_esperado = df_variations_numeric.mean()
     desvio_padrao = df_variations_numeric.std()
     indice_desempenho = retorno_esperado / desvio_padrao
+    indice_sharpe = (retorno_esperado - 0.875) / desvio_padrao
 
     # Criar um DataFrame para os indicadores de desempenho
     indicadores_df = pd.DataFrame({
         'E(R)': retorno_esperado,
         'DP': desvio_padrao,
-        'Índ. de Desemp.': indice_desempenho
+        'Índ. de Desemp.': indice_desempenho,
+        'Índ. de Sharpe' : indice_sharpe
+
     }).transpose()
 
     output = f'{carteira_exportar}_report.xlsx'
