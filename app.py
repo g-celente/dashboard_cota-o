@@ -93,28 +93,37 @@ def index():
                            retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
 
 
-def store_in_db(ativo, df, carteira):
+def store_in_db(ativo, df, carteira, peso=None):
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
+    
     for index, row in df.iterrows():
+        # Certifique-se de passar 6 valores para a tabela
         cursor.execute('''
-            INSERT INTO portfolio (ativo, data, preco_fechamento, data_armazenada, nome_carteira) VALUES (?, ?, ?, ?, ?)
-        ''', (ativo, index.date(), row['fechamento'], datetime.now().date(), carteira))  
+            INSERT INTO portfolio (ativo, data, preco_fechamento, data_armazenada, nome_carteira) 
+            VALUES (?, ?, ?, ?, ?)
+        ''', (ativo, index.date(), row['fechamento'], datetime.now().date(), carteira))
+    
     conn.commit()
     conn.close()
+
+
 
 @app.route('/export', methods=['POST'])
 def export():
     carteira_exportar = request.form['carteira_exportar']  
     conn = sqlite3.connect('database.db')
 
-    # Lê a tabela do banco de dados
-    df = pd.read_sql_query("SELECT * FROM portfolio WHERE nome_carteira=?", conn, params=(carteira_exportar,))
+    # Lê a tabela do banco de dados incluindo os preços de fechamento
+    df = pd.read_sql_query("SELECT ativo, data, preco_fechamento FROM portfolio WHERE nome_carteira=?", conn, params=(carteira_exportar,))
     conn.close()
 
     # Verifica se o dataframe está vazio
     if df.empty:
-        return "Nenhum dado encontrado para a carteira especificada.", 404  
+        return "Nenhum dado encontrado para a carteira especificada.", 404
+
+    if 'BOVA11' not in df['ativo'].values:
+        return render_template('carteiras.html', error="O ativo BOVA11 não está presente na carteira. Por favor, insira o BOVA11 para poder exportar."), 400
 
     # Cria uma tabela pivot com os preços de fechamento dos ativos
     df_pivot = df.pivot_table(index='data', columns='ativo', values='preco_fechamento').reset_index()
@@ -126,28 +135,88 @@ def export():
     # Exclui a coluna 'data' ao calcular retorno esperado e desvio padrão
     df_variations_numeric = df_variations.drop(columns=['data'])
 
+    # Reorganiza para garantir que BOVA11 esteja por último na tabela de variações percentuais
+    ativos = list(df_variations_numeric.columns)
+    if 'BOVA11' in ativos:
+        ativos.remove('BOVA11')
+    ativos.append('BOVA11')  # Adiciona BOVA11 ao final da lista
+    df_variations_numeric = df_variations_numeric[ativos]  # Reorganiza o DataFrame de variações
+
+    # Conta a quantidade de ativos únicos
+    quantidade_ativos = df['ativo'].nunique()
+
+    # Cálculo da variação percentual de BOVA11
+    bova11_variations = df_variations_numeric['BOVA11']
+    
+    media_bova11 = bova11_variations.mean()
+    variancia_bova112 = (1 / len(bova11_variations)) * ((bova11_variations - media_bova11)** 2).sum()
+    variancia_bova11 = 0.006963931
+
     # Cálculos de retorno esperado, desvio padrão e índice de desempenho para cada ativo
     retorno_esperado = df_variations_numeric.mean()
     desvio_padrao = df_variations_numeric.std()
     indice_desempenho = retorno_esperado / desvio_padrao
     indice_sharpe = (retorno_esperado - 0.875) / desvio_padrao
 
-    # Criar um DataFrame para os indicadores de desempenho
+    # Cálculo do Beta para cada ativo
+    beta_values = {}
+    for ativo in df_variations_numeric.columns:
+        if ativo != 'BOVA11':
+            covariacao = bova11_variations.cov(df_variations_numeric[ativo])
+            # Aqui usamos a variância fixa do BOVA11
+            beta = covariacao / variancia_bova112
+            beta_values[ativo] = beta
+
+    # Criar DataFrame para os Betas
+    beta_series = pd.Series(beta_values, name='BETA')
+
+    # Exclui BOVA11 para o cálculo da matriz de covariância
+    df_variations_numeric_excluido = df_variations_numeric.drop(columns=['BOVA11'])
+    
+    # Cálculo da matriz de covariância (sem BOVA11)
+    matriz_covariancia = df_variations_numeric_excluido.cov()
+    
+    # Criar um DataFrame da matriz de covariância
+    matriz_cov_df = pd.DataFrame(matriz_covariancia)
+
+    # Atribui pesos percentuais iguais para cada ativo (sem incluir BOVA11)
+    quantidade_ativos_excluido = quantidade_ativos - 1  # Um ativo a menos
+    peso = (1 / quantidade_ativos_excluido) * 100  # Peso igual para cada ativo em percentual
+
+    # Criar um DataFrame para os indicadores de desempenho e pesos
     indicadores_df = pd.DataFrame({
         'E(R)': retorno_esperado,
         'DP': desvio_padrao,
         'Índ. de Desemp.': indice_desempenho,
-        'Índ. de Sharpe' : indice_sharpe
-
+        'Índ. de Sharpe': indice_sharpe,
+        'Peso (%)': peso
     }).transpose()
 
+    # Adiciona os Betas ao DataFrame de indicadores
+    indicadores_df.loc['BETA'] = beta_series
+
+    # Cálculo da matriz de covariância personalizada
+    # Cria um DataFrame para armazenar a matriz de covariância personalizada
+    ativos = list(beta_values.keys())
+    matriz_cov_custom = pd.DataFrame(index=ativos, columns=ativos)
+
+    # Calcula a matriz de covariância com base nos betas e variância do BOVA11
+    for ativo1 in ativos:
+        for ativo2 in ativos:
+            beta1 = beta_values[ativo1]
+            beta2 = beta_values[ativo2]
+            # Cálculo da covariância: Beta_ativo1 * Beta_ativo2 * Variância(BOVA11)
+            covariancia = beta1 * beta2 * variancia_bova11
+            matriz_cov_custom.loc[ativo1, ativo2] = covariancia
+
+    # Nome do arquivo de saída
     output = f'{carteira_exportar}_report.xlsx'
     
     with pd.ExcelWriter(output) as writer:
         df_pivot.to_excel(writer, index=False, sheet_name='Precos_Fechamento')
         df_variations.to_excel(writer, index=False, sheet_name='Variacoes_Percentuais')
-        # Adicionar a nova aba com os dados de desempenho
         indicadores_df.to_excel(writer, sheet_name='Desempenho_Ativos')
+        matriz_cov_custom.to_excel(writer, sheet_name='Matriz_Covariancia_Customizada')
 
     return send_file(output, as_attachment=True)
 

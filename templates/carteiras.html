@@ -25,6 +25,7 @@
             <div class="top-bar">
                 <h2>Carteiras</h2>
             </div>
+            
 
             <!-- Tabela de Carteiras -->
             <div class="top-bar4">
@@ -60,6 +61,11 @@
                     </tbody>
                 </table>
             </div>
+            {% if error %}
+            <div class="error-message">
+                <p style="color: red;">{{ error }}</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </body>
