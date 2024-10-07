@@ -6,6 +6,7 @@ from datetime import datetime
 import requests
 import os
 import json
+import yfinance as yf
 
 app = Flask(__name__)
 
@@ -45,53 +46,48 @@ def index():
 
     if request.method == 'POST':
         ativo = request.form['ativo']
-        periodo = request.form['periodo']
-        carteira = request.form['carteira'] 
-        intervalo = request.form['interval']
+        periodo = request.form['periodo']  # Exemplo: "1y", "6mo", "3mo"
+        intervalo = request.form['interval']  # Exemplo: "1d", "1wk", "1mo"
+        carteira = request.form['carteira']
 
-        # Definindo a URL da API BrAPI
-        token = "2ZB7EGv55yUzUgDkPAGyDb"
-        url = f"https://brapi.dev/api/quote/{ativo}?range={periodo}&interval={intervalo}&dividends=true"
+        # Baixando os dados do Yahoo Finance
+        try:
+            if not ativo.endswith('.SA'):
+                ativo = f"{ativo}.SA"
+                
+            df_price = yf.download(ativo, period=periodo, interval=intervalo)
 
-        # Fazendo a requisição à nova API
-        response = requests.get(url, headers={"Authorization": f"Bearer {token}"})
-        data = response.json()
+            if df_price.empty:
+                error = "Nenhum dado encontrado para as datas especificadas."
+                return render_template('index.html', error=error, ativo=ativo, carteiras=carteiras, retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
 
-        if 'results' not in data or not data['results']:
-            error = "Ativo não encontrado ou erro na API."
+            # Usando a coluna 'Adj Close' para obter o preço ajustado
+            df_price.rename(columns={'Adj Close': 'fechamento'}, inplace=True)
+
+            # Calculando a variação percentual
+            df_price['variacao'] = df_price['fechamento'].pct_change() * 100
+            retorno_esperado = df_price['variacao'].mean()
+            desvio_padrao = df_price['variacao'].std()
+            indice_desempenho = retorno_esperado / desvio_padrao if desvio_padrao != 0 else None
+
+            # Armazenando no banco de dados
+            store_in_db(ativo, df_price, carteira)
+
+            # Gerando gráficos
+            fig_closing = px.line(df_price, x=df_price.index, y='fechamento', title=f'Preços Ajustados de Fechamento de {ativo}')
+            graph_closing_html = fig_closing.to_html(full_html=False)
+
+            fig_variation = px.line(df_price, x=df_price.index, y='variacao', title=f'Variação Percentual de {ativo}')
+            graph_variation_html = fig_variation.to_html(full_html=False)
+
+            df_html = df_price[['fechamento', 'variacao']].to_html()
+
+        except Exception as e:
+            error = f"Erro ao buscar dados do Yahoo Finance: {str(e)}"
             return render_template('index.html', error=error, ativo=ativo, carteiras=carteiras, retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
-
-        # Transformando os dados recebidos em um DataFrame
-        df_price = pd.DataFrame(data['results'][0]['historicalDataPrice'])
-
-        # Processando os dados de preços
-        df_price['date'] = pd.to_datetime(df_price['date'], unit='s')
-        df_price.set_index('date', inplace=True)
-        df_price.rename(columns={'close': 'fechamento'}, inplace=True)
-
-        if df_price.empty:
-            error = "Nenhum dado encontrado para as datas especificadas."
-            return render_template('index.html', error=error, ativo=ativo, carteiras=carteiras, retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
-
-        df_price['variacao'] = df_price['fechamento'].pct_change() * 100
-
-        retorno_esperado = df_price['variacao'].mean()
-        desvio_padrao = df_price['variacao'].std()
-        indice_desempenho = retorno_esperado / desvio_padrao if desvio_padrao != 0 else None
-
-        store_in_db(ativo, df_price, carteira)
-
-        fig_closing = px.line(df_price, x=df_price.index, y='fechamento', title=f'Preços de Fechamento de {ativo}')
-        graph_closing_html = fig_closing.to_html(full_html=False)
-
-        fig_variation = px.line(df_price, x=df_price.index, y='variacao', title=f'Variação Percentual de {ativo}')
-        graph_variation_html = fig_variation.to_html(full_html=False)
-
-        df_html = df_price[['fechamento', 'variacao']].to_html()
 
     return render_template('index.html', graph_closing=graph_closing_html, graph_variation=graph_variation_html, ativo=ativo, df=df_html, error=error, carteiras=carteiras,
                            retorno_esperado=retorno_esperado, desvio_padrao=desvio_padrao, indice_desempenho=indice_desempenho)
-
 
 def store_in_db(ativo, df, carteira, peso=None):
     conn = sqlite3.connect('database.db')
@@ -122,66 +118,65 @@ def export():
     if df.empty:
         return "Nenhum dado encontrado para a carteira especificada.", 404
 
-    if 'BOVA11' not in df['ativo'].values:
+    if 'BOVA11.SA' not in df['ativo'].values:
         return render_template('carteiras.html', error="O ativo BOVA11 não está presente na carteira. Por favor, insira o BOVA11 para poder exportar."), 400
 
     # Cria uma tabela pivot com os preços de fechamento dos ativos
     df_pivot = df.pivot_table(index='data', columns='ativo', values='preco_fechamento').reset_index()
 
-    # Calcula as variações percentuais
-    df_variations = df_pivot.set_index('data').pct_change() * 100
-    df_variations.reset_index(inplace=True)
-
+    # Calcula as variações percentuais de cada ativo usando pct_change()
+    df_variations = df_pivot.copy()
+    df_variations[df_pivot.columns[1:]] = df_pivot[df_pivot.columns[1:]].pct_change()
     # Exclui a coluna 'data' ao calcular retorno esperado e desvio padrão
     df_variations_numeric = df_variations.drop(columns=['data'])
 
     # Reorganiza para garantir que BOVA11 esteja por último na tabela de variações percentuais
     ativos = list(df_variations_numeric.columns)
-    if 'BOVA11' in ativos:
-        ativos.remove('BOVA11')
-    ativos.append('BOVA11')  # Adiciona BOVA11 ao final da lista
+    if 'BOVA11.SA' in ativos:
+        ativos.remove('BOVA11.SA')
+    ativos.append('BOVA11.SA')  # Adiciona BOVA11 ao final da lista
     df_variations_numeric = df_variations_numeric[ativos]  # Reorganiza o DataFrame de variações
 
     # Conta a quantidade de ativos únicos
     quantidade_ativos = df['ativo'].nunique()
 
     # Cálculo da variação percentual de BOVA11
-    bova11_variations = df_variations_numeric['BOVA11']
-    
+    bova11_variations = df_variations_numeric['BOVA11.SA']
+
     media_bova11 = bova11_variations.mean()
     variancia_bova112 = (1 / len(bova11_variations)) * ((bova11_variations - media_bova11)** 2).sum()
-    variancia_bova11 = 0.006963931
+    variancia_bova11 = bova11_variations.var()
 
     # Cálculos de retorno esperado, desvio padrão e índice de desempenho para cada ativo
     retorno_esperado = df_variations_numeric.mean()
     desvio_padrao = df_variations_numeric.std()
-    indice_desempenho = retorno_esperado / desvio_padrao
-    indice_sharpe = (retorno_esperado - 0.875) / desvio_padrao
+    indice_desempenho = (retorno_esperado / desvio_padrao)
+    indice_sharpe = ((retorno_esperado - 0.0088) / desvio_padrao) 
 
     # Cálculo do Beta para cada ativo
     beta_values = {}
     for ativo in df_variations_numeric.columns:
-        if ativo != 'BOVA11':
+        if ativo != 'BOVA11.SA':
             covariacao = bova11_variations.cov(df_variations_numeric[ativo])
             # Aqui usamos a variância fixa do BOVA11
-            beta = covariacao / variancia_bova112
+            beta = covariacao / variancia_bova11
             beta_values[ativo] = beta
 
     # Criar DataFrame para os Betas
     beta_series = pd.Series(beta_values, name='BETA')
 
     # Exclui BOVA11 para o cálculo da matriz de covariância
-    df_variations_numeric_excluido = df_variations_numeric.drop(columns=['BOVA11'])
-    
+    df_variations_numeric_excluido = df_variations_numeric.drop(columns=['BOVA11.SA'])
+
     # Cálculo da matriz de covariância (sem BOVA11)
     matriz_covariancia = df_variations_numeric_excluido.cov()
-    
+
     # Criar um DataFrame da matriz de covariância
     matriz_cov_df = pd.DataFrame(matriz_covariancia)
 
     # Atribui pesos percentuais iguais para cada ativo (sem incluir BOVA11)
     quantidade_ativos_excluido = quantidade_ativos - 1  # Um ativo a menos
-    peso = (1 / quantidade_ativos_excluido) * 100  # Peso igual para cada ativo em percentual
+    peso = (1 / quantidade_ativos_excluido)  # Peso igual para cada ativo em percentual
 
     # Criar um DataFrame para os indicadores de desempenho e pesos
     indicadores_df = pd.DataFrame({
@@ -196,7 +191,6 @@ def export():
     indicadores_df.loc['BETA'] = beta_series
 
     # Cálculo da matriz de covariância personalizada
-    # Cria um DataFrame para armazenar a matriz de covariância personalizada
     ativos = list(beta_values.keys())
     matriz_cov_custom = pd.DataFrame(index=ativos, columns=ativos)
 
@@ -211,7 +205,7 @@ def export():
 
     # Nome do arquivo de saída
     output = f'{carteira_exportar}_report.xlsx'
-    
+
     with pd.ExcelWriter(output) as writer:
         df_pivot.to_excel(writer, index=False, sheet_name='Precos_Fechamento')
         df_variations.to_excel(writer, index=False, sheet_name='Variacoes_Percentuais')
@@ -219,6 +213,7 @@ def export():
         matriz_cov_custom.to_excel(writer, sheet_name='Matriz_Covariancia_Customizada')
 
     return send_file(output, as_attachment=True)
+
 
 
 
